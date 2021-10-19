@@ -115,7 +115,7 @@ export class Lexer {
                 break
             default:
                 if (isDelim(byte)) {
-                    console.error(`unexpected delimiter: ${String.fromCharCode(byte)}`)
+                    //console.error(`unexpected delimiter: ${String.fromCharCode(byte)}`)
                     return {type: T.Null, value: null}
                 }
                 this.rewind()

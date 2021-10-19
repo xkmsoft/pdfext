@@ -2,7 +2,7 @@
 
 import { Lexer } from "./lexer.js";
 import { T } from "./constants.js"
-import { unicodeConverter } from "./utils.js";
+import {cleanText} from "./utils.js";
 
 const TEXT_OPS = {
     /*
@@ -162,7 +162,7 @@ export const textDecoder = (data) => {
             switch (op) {
                 case STATE_OPS.TD:
                     if (args.length !== 2) {
-                        console.error(`bad parameters for operand: ${op}`)
+                        //console.error(`bad parameters for operand: ${op}`)
                         break
                     }
                     x = args[0]
@@ -170,7 +170,7 @@ export const textDecoder = (data) => {
                     break
                 case STATE_OPS.Tf:
                     if (args.length !== 2) {
-                        console.error(`bad parameters for operand: ${op}`)
+                        //console.error(`bad parameters for operand: ${op}`)
                         break
                     }
                     font = args[0]
@@ -178,22 +178,22 @@ export const textDecoder = (data) => {
                     break
                 case STATE_OPS.Tj:
                     if (args.length !== 1) {
-                        console.error(`bad parameters for operand: ${op}`)
+                        //console.error(`bad parameters for operand: ${op}`)
                         break
                     }
                     text = args[0]
-                    texts.push({font, fontSize, x, y, text: unicodeConverter(text)})
+                    texts.push({font, fontSize, x, y, text: cleanText(text)})
                     break
                 case STATE_OPS.TJ:
                     if (args.length !== 1) {
-                        console.error(`bad parameters for operand ${op}`)
+                        //console.error(`bad parameters for operand ${op}`)
                         break
                     }
                     const values = args[0]
                     for (let i = 0; i < values.length; i++) {
                         const value = values[i]
                         if (typeof value === "string") {
-                            texts.push({font, fontSize, x, y, text: unicodeConverter(value)})
+                            texts.push({font, fontSize, x, y, text: cleanText(value)})
                         }
                     }
                     break
