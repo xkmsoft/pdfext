@@ -45,11 +45,11 @@ export const pngDecode = (data, predictor, columns) => {
         case PredictionTypes.No:
             return data
         case PredictionTypes.TIFF:
-            throw new Error(`Prediction type TIFF (${predictor}) not implemented yet`)
+            throw new Error(`Prediction type TIFF (${predictor}) is not implemented yet`)
         case PredictionTypes.None:
             return data
         case PredictionTypes.Sub:
-            throw new Error(`Prediction type Sub (${predictor}) not implemented yet`)
+            throw new Error(`Prediction type Sub (${predictor}) is not implemented yet`)
         case PredictionTypes.Up:
             try {
                 const rows = createRows(data, columns, FilterBytes.Up)
@@ -71,11 +71,11 @@ export const pngDecode = (data, predictor, columns) => {
                 throw e
             }
         case PredictionTypes.Average:
-            throw new Error(`Prediction type Average (${predictor}) not implemented yet`)
+            throw new Error(`Prediction type Average (${predictor}) is not implemented yet`)
         case PredictionTypes.Paeth:
-            throw new Error(`Prediction type Paeth (${predictor}) not implemented yet`)
+            throw new Error(`Prediction type Paeth (${predictor}) is not implemented yet`)
         case PredictionTypes.Optimum:
-            throw new Error(`Prediction type Optimum (${predictor}) not implemented yet`)
+            throw new Error(`Prediction type Optimum (${predictor}) is not implemented yet`)
         default:
             throw new Error(`Unknown predictor (${predictor})`)
     }

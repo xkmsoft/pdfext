@@ -5,7 +5,7 @@ import { Buffer } from 'buffer'
 import * as util from "util";
 import { Lexer } from "./lexer.js";
 import { getVs } from "./utils.js";
-import { Definition, Dict, Reader, Reference, Stream, XRef } from "./objects.js";
+import { Reader, Reference, Stream, XRef } from "./objects.js";
 import { T } from "./constants.js";
 
 export class PDFReader {
@@ -44,17 +44,21 @@ export class PDFReader {
                 const lex2 = new Lexer(this.data.slice(prev, this.data.length - 1), prev)
                 const trailer2 = lex2.readObject()
                 const refs = this.readXrefReferences(trailer2)
-                xrefs.push(refs)
+                xrefs.push(...refs)
             }
-            const aRefs = this.readXrefReferences(trailer)
-            xrefs.push(aRefs)
+            const refs = this.readXrefReferences(trailer)
+            xrefs.push(...refs)
             this.trailer = trailer
-            this.xrefs = xrefs.flat()
+            if (this.trailer.Key("Size") !== xrefs.length) {
+                throw new Error(`All references could not be found. Size in the trailer ${this.trailer.Key('Size')} and the found ${xrefs.length}`)
+            }
+            this.xrefs = xrefs
         } else {
             // In trailer
             const xrefOffset = this.xrefOffsets[0]
+            const xrefs = []
+            let matched = false
             for (let i = 0; i < this.trailerOffsets.length; i++) {
-                const xrefs = []
                 const lexer = new Lexer(this.data.slice(this.trailerOffsets[i] + 8, this.data.length - 1), this.trailerOffsets[i])
                 this.trailer = lexer.readObject()
                 if (this.trailer.HasKey("Prev")) {
@@ -62,13 +66,17 @@ export class PDFReader {
                     const refs = this.findReferences(prev, this.data.length - 1)
                     xrefs.push(...refs)
                 }
-                const aRefs = this.findReferences(xrefOffset, this.trailerOffsets[i])
-                xrefs.push(...aRefs)
+                const refs = this.findReferences(xrefOffset, this.trailerOffsets[i])
+                xrefs.push(...refs)
                 if (this.trailer.Key("Size") === xrefs.length) {
                     // Size matches: break
                     this.xrefs = xrefs
+                    matched = true
                     break
                 }
+            }
+            if (!matched) {
+                throw new Error(`All references could not be found. Size in the trailer ${this.trailer.Key('Size')} and the found ${xrefs.length}`)
             }
         }
     }
@@ -139,8 +147,7 @@ export class PDFReader {
                         xrefs.push(x2)
                         break
                     default:
-                        console.log(`Invalid xref stream type: ${v1}`)
-                        break
+                        throw new Error(`Invalid xref stream type: ${v1}`)
                 }
                 buffer = []
                 looper++
@@ -219,7 +226,7 @@ export class PDFReader {
                 const gen = lexer.readToken()
                 const inUse = lexer.readToken()
                 if (offset.type !== T.Integer && gen.type !== T.Integer && inUse.type !== T.Keyword) {
-                    continue
+                    throw new Error(`Malformed references offset and generation should be numbers and in use flag single character`)
                 }
                 ref.refs.push(new XRef(
                     new Reference(ref.id + i, gen.value),
@@ -257,7 +264,7 @@ export class PDFReader {
         if (pageCount === this.pages.length) {
             console.log(`All ${pageCount} pages build successfully`)
         } else {
-            console.error(`Reported page size is ${pageCount} but the built page size is ${this.pages.length}`)
+            throw new Error(`Reported page size is ${pageCount} but the built page size is ${this.pages.length}`)
         }
     }
 
@@ -276,24 +283,7 @@ export class PDFReader {
             reported page number in the catalog was ${this.pageSize()}. Current kids size: ${kids.length}`)
         }
         const page = kids[index].resolve(this.reader)
-        if (page instanceof Dict) {
-            if (page.Type !== "Page") {
-                // Type Pages: Keep searching recursively
-                return this.findPage(page.Key("Kids"), index)
-            } else {
-                // Page
-                return page
-            }
-        }
-        if (page instanceof Definition) {
-            if (page.obj.Type !== "Page") {
-                // Type Pages: Keep searching recursively
-                return this.findPage(page.Key("Kids"), index)
-            } else {
-                // Page
-                return page
-            }
-        }
+        return (page.Key("Type") !== "Pages") ? this.findPage(page.Key("Kids"), index) : page
     }
 
     pageSize () {

@@ -206,6 +206,8 @@ export const textDecoder = (data) => {
 
     const interpreter = (lexer, callback) => {
         let stack = []
+        // TODO: Improve the interpreter by implementing all valid operands
+        //  PDF 32000-1:2008 --> Section 9: Text
         const validOperands = [STATE_OPS.TD, STATE_OPS.Tf, STATE_OPS.Tj, STATE_OPS.TJ]
         while (true) {
             const token = lexer.readToken()

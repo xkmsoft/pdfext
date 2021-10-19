@@ -1,17 +1,17 @@
 "use strict"
 
 import * as util from "util";
-import { inflateSync } from "zlib"
 import { Lexer } from "./lexer.js"
 import { T } from "./constants.js"
-import { simpleTextDecoder, textDecoder } from "./text.js"
+import { textDecoder } from "./text.js"
 import { byteArrayToString, isSpace } from "./utils.js"
-import { pngDecode } from "./filter.js"
+import { Decoders, FlateDecode } from "./decoders.js"
 
 const inspectOptions = {showHidden: false, depth: null, colors: true}
 
 export class Base {
     Key(key, reader) {}
+    HasKey(key) {}
 }
 
 export class Reader {
@@ -93,7 +93,7 @@ export class Reference {
                 return lexer.readObject()
             }
         }
-        throw new Error(`Failed to resolve the object stream  id:${this.id} gen:${this.gen}`)
+        throw new Error(`Failed to resolve the object stream with id:${this.id} gen:${this.gen}`)
     }
 
     findXRef (xrefs, ref) {
@@ -164,6 +164,19 @@ export class Stream {
         this.offset = offset
     }
 
+    sliceData (reader, length, ignoreWhiteSpace) {
+        if (ignoreWhiteSpace) {
+            return reader.data.slice(this.offset, this.offset + length)
+        }
+        const data = reader.data.slice(this.offset, this.offset + length)
+        if (isSpace(data[0])) {
+            // In some cases, sliced buffer has white space in the first index which triggers invalid header check.
+            // Shifting 1 byte resolves
+            return reader.data.slice(this.offset + 1, this.offset + length + 1)
+        }
+        return data
+    }
+
     decode (reader) {
         let { Filter, Length, DecodeParms } = this.dict
         if (Length === undefined) {
@@ -172,37 +185,40 @@ export class Stream {
         if (Length instanceof Reference) {
             const length = Length.resolve(reader)
             Length = length.obj
+            if (!Number.isInteger(Length)) {
+                throw new Error(`Length ${Length} is not a valid integer`)
+            }
         }
         if (this.offset === undefined) {
             throw new Error("offset is not defined")
         }
         if (Filter === undefined) {
-            return reader.data.slice(this.offset, this.offset + Length)
+            return this.sliceData(reader, Length, true)
         }
+        const data = this.sliceData(reader, Length, false)
         switch (Filter) {
-            case "FlateDecode":
-                try {
-                    // In some cases, sliced buffer has White in the first index space which triggers invalid header check.
-                    // Shifting 1 byte resolves
-                    let sliced = reader.data.slice(this.offset, this.offset + Length)
-                    if (isSpace(sliced[0])) {
-                        sliced = reader.data.slice(this.offset + 1, this.offset + Length + 1)
-                    }
-                    const inflated = inflateSync(sliced)
-                    if (DecodeParms !== undefined) {
-                        const columns = DecodeParms.Columns
-                        const predictor = DecodeParms.Predictor
-                        if (columns !== undefined && predictor !== undefined) {
-                            return pngDecode(inflated, predictor, columns)
-                        }
-                    }
-                    return inflated
-                } catch (e) {
-                    console.error(e)
-                    throw e
-                }
-            default:
+            case Decoders.ASCIIHexDecode:
                 throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.ASCII85Decode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.LZWDecode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.FlateDecode:
+                return FlateDecode(data, DecodeParms)
+            case Decoders.RunLengthDecode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.CCITTFaxDecode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.JBIG2Decode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.DCTDecode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.JPXDecode:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            case Decoders.Crypt:
+                throw new Error(`Filter ${Filter} is not supported yet`)
+            default:
+                throw new Error(`Unknown Filter ${Filter}`)
             }
     }
 
