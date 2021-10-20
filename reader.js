@@ -44,15 +44,15 @@ export class PDFReader {
                 const lex2 = new Lexer(this.data.slice(prev, this.data.length - 1), prev)
                 const trailer2 = lex2.readObject()
                 const refs = this.readXrefReferences(trailer2)
-                xrefs.push(...refs)
+                xrefs.push(refs)
             }
             const refs = this.readXrefReferences(trailer)
-            xrefs.push(...refs)
+            xrefs.push(refs)
             this.trailer = trailer
-            if (this.trailer.Key("Size") !== xrefs.length) {
+            if (this.trailer.Key("Size") !== xrefs.flat().length) {
                 throw new Error(`All references could not be found. Size in the trailer ${this.trailer.Key('Size')} and the found ${xrefs.length}`)
             }
-            this.xrefs = xrefs
+            this.xrefs = xrefs.flat()
         } else {
             // In trailer
             const xrefOffset = this.xrefOffsets[0]
@@ -64,13 +64,13 @@ export class PDFReader {
                 if (this.trailer.HasKey("Prev")) {
                     const prev = this.trailer.Key("Prev")
                     const refs = this.findReferences(prev, this.data.length - 1)
-                    xrefs.push(...refs)
+                    xrefs.push(refs)
                 }
                 const refs = this.findReferences(xrefOffset, this.trailerOffsets[i])
-                xrefs.push(...refs)
-                if (this.trailer.Key("Size") === xrefs.length) {
+                xrefs.push(refs)
+                if (this.trailer.Key("Size") === xrefs.flat().length) {
                     // Size matches: break
-                    this.xrefs = xrefs
+                    this.xrefs = xrefs.flat()
                     matched = true
                     break
                 }
@@ -283,7 +283,8 @@ export class PDFReader {
             reported page number in the catalog was ${this.pageSize()}. Current kids size: ${kids.length}`)
         }
         const page = kids[index].resolve(this.reader)
-        return (page.Key("Type") !== "Pages") ? this.findPage(page.Key("Kids"), index) : page
+        // If type is Pages (intermediate leaf): keep searching recursively until find the leaf which has type Page
+        return (page.Key("Type") === "Pages") ? this.findPage(page.Key("Kids"), index) : page
     }
 
     pageSize () {
