@@ -1,232 +1,391 @@
 "use strict"
 
-import { Lexer } from "./lexer.js";
+import { Lexer } from "./lexer.js"
 import { T } from "./constants.js"
-import {cleanText} from "./utils.js";
+import {GlyphState, Text} from "./glyph.js"
+import {Matrix3x3} from "./matrix.js"
 
-const TEXT_OPS = {
-    /*
-    BT: Begin Text
-     */
-    BT: "BT",
-
-    /*
-    ET: End Text
-     */
-    ET: "ET",
+const CATEGORY = {
+    GeneralGraphicsState: 1,
+    SpecialGraphicsState: 2,
+    PathConstruction: 3,
+    PathPainting: 4,
+    ClippingPaths: 5,
+    TextObjects: 6,
+    TextState: 7,
+    TextPositioning: 8,
+    TextShowing: 9,
+    Type3Fonts: 10,
+    Color: 11,
+    ShadingPatterns: 12,
+    InlineImages: 13,
+    XObjects: 14,
+    MarkedContent: 15,
+    Compatibility: 16
 }
 
-const STATE_OPS = {
-    /*
-    Tc: Set the character spacing, Tc, to charSpace, which shall be a number expressed in unscaled text space units.
-    Character spacing shall be used by the Tj, TJ, and ' operators. Initial value: 0.
-     */
-    Tc: "Tc",
+const OP = {
+    cm: {
+        value: "cm",
+        type: CATEGORY.SpecialGraphicsState,
+        args: 6
+    },
+    q: {
+        value: "q",
+        type: CATEGORY.SpecialGraphicsState,
+        args: 0
+    },
+    Q: {
+        value: "Q",
+        type: CATEGORY.SpecialGraphicsState,
+        args: 0
+    },
+    BT: {
+        value: "BT",
+        type: CATEGORY.TextObjects,
+        args: 0
+    },
+    ET: {
+        value: "ET",
+        type: CATEGORY.TextObjects,
+        args: 0
+    },
+    Tc: {
+        value: "Tc",
+        type: CATEGORY.TextState,
+        args: 1
+    },
+    Tw: {
+        value: "Tw",
+        type: CATEGORY.TextState,
+        args: 1
+    },
+    Tz: {
+        value: "Tz",
+        type: CATEGORY.TextState,
+        args: 1
+    },
+    TL: {
+        value: "TL",
+        type: CATEGORY.TextState,
+        args: 1
+    },
+    Tf: {
+        value: "Tf",
+        type: CATEGORY.TextState,
+        args: 2
+    },
+    Tr: {
+        value: "Tr",
+        type: CATEGORY.TextState,
+        args: 1
+    },
+    Ts: {
+        value: "Ts",
+        type: CATEGORY.TextState,
+        args: 1,
+    },
+    Td: {
+        value: "Td",
+        type: CATEGORY.TextPositioning,
+        args: 2
+    },
+    TD: {
+        value: "TD",
+        type: CATEGORY.TextPositioning,
+        args: 2,
+    },
+    Tm: {
+        value: "Tm",
+        type: CATEGORY.TextPositioning,
+        args: 6,
+    },
+    TAsterisk: {
+        value: "T*",
+        type: CATEGORY.TextPositioning,
+        args: 0,
+    },
+    Tj: {
+        value: "Tj",
+        type: CATEGORY.TextShowing,
+        args: 1
+    },
+    TJ: {
+        value: "TJ",
+        type: CATEGORY.TextShowing,
+        args: 1
+    },
+    TSQuote: {
+        value: "'",
+        type: CATEGORY.TextShowing,
+        args: 1
+    },
+    TDQuote: {
+        value: "\"",
+        type: CATEGORY.TextShowing,
+        args: 3
+    },
 
-    /*
-    Tw: Set the word spacing, Tw, to wordSpace, which shall be a number expressed in unscaled text space units.
-    Word spacing shall be used by the Tj, TJ, and ' operators. Initial value: 0.
-     */
-    Tw: "Tw",
-
-    /*
-    Tz: Set the horizontal scaling, Th, to (scale ÷ 100). scale shall be a number specifying the percentage of
-     the normal width. Initial value: 100 (normal width).
-     */
-    Tz: "Tz",
-
-    /*
-    TL: Set the text leading, Tl, to leading, which shall be a number expressed in unscaled text space units.
-    Text leading shall be used only by the T*, ', and " operators. Initial value: 0.
-     */
-    TL: "TL",
-
-    /*
-    Tf: Set the text font, Tf, to font and the text font size, Tfs, to size. font shall be the name of a font
-     resource in the Font sub-dictionary of the current resource dictionary; size shall be a number representing
-     a scale factor. There is no initial value for either font or size; they shall be specified explicitly
-     by using Tf before any text is shown.
-     */
-    Tf: "Tf",
-
-    /*
-    Tr: Set the text rendering mode, Tmode, to render, which shall be an integer. Initial value: 0.
-     */
-    Tr: "Tr",
-
-    /*
-    Ts: Set the text rise, Trise, to rise, which shall be a number expressed in unscaled text space units.
-    Initial value: 0.
-     */
-    Ts: "Ts",
-
-    /*
-    Td: Move to the start of the next line, offset from the start of the current line by (tx, ty).
-    tx and ty shall denote numbers expressed in unscaled text space units.
-     */
-    Td: "Td",
-
-    /*
-    TD: Move to the start of the next line, offset from the start of the current line by (tx, ty).
-    As a side effect, this operator shall set the leading parameter in the text state.
-    This operator shall have the same effect as this code:
-     */
-    TD: "TD",
-
-    /*
-    TM: Set the text matrix, Tm, and the text line matrix, Tlm:
-    The operands shall all be numbers, and the initial value for Tm and Tlmshall be the identity matrix, [1 0 0 1 0 0].
-    Although the operands specify a matrix, they shall be passed to Tm as six separate numbers, not as an array.
-    The matrix specified by the operands shall not be concatenated onto the current text matrix, but shall replace it.
-     */
-    TM: "TM",
-
-    /*
-    T*: Move to the start of the next line. This operator has the same effect as the code 0 -Tl Td
-    where Tl denotes the current leading parameter in the text state. The negative of Tl is used here because Tl is
-     the text leading expressed as a positive number. Going to the next line entails decreasing the y coordinate.
-     */
-    TAsterisk: "T*",
-
-    /*
-    Tj: Shows a text string
-     */
-    Tj: "Tj",
-
-    /*
-    ': Move to the next line and show a text string. This operator shall have the same effect as the code T*
-    string Tj
-     */
-    TSQuote: " '",
-
-    /*
-    ": Move to the next line and show a text string, using aw as the word spacing and ac as the character spacing
-    (setting the corresponding parameters in the text state). aw and ac shall be numbers expressed in unscaled
-    text space units. This operator shall have the same effect as this code:
-    aw Tw
-    ac Tc
-    string '
-     */
-    TDQuote: ` "`,
-
-    /*
-    TJ: Show one or more text strings, allowing individual glyph positioning. Each element of array shall be either
-     a string or a number. If the element is a string, this operator shall show the string. If it is a number,
-     the operator shall adjust the text position by that amount; that is, it shall translate the text matrix,
-     Tm. The number shall be expressed in thousandths of a unit of text space (see 9.4.4, "Text Space Details").
-     This amount shall be subtracted from the current horizontal or vertical coordinate, depending on the writing mode.
-      In the default coordinate system, a positive adjustment has the effect of moving the next glyph painted either
-       to the left or down by the given amount. Figure 46 shows an example of the effect of passing offsets to TJ.
-     */
-    TJ: "TJ",
 }
 
-export const simpleTextDecoder = (data) => {
-    const slice = data
+export const textDecoder = (data, reader, fonts) => {
 
     const decode = () => {
         const texts = []
-        const lexer = new Lexer(slice)
-        while (true) {
-            const token = lexer.readToken()
-            if (token.type === T.EOF) {
-                break
-            }
-            if (lexer.pos >= slice.length) {
-                break
-            }
-            if (token.type === T.String) {
-                texts.push(token.value)
-            }
-        }
-        return texts
-    }
-
-    return {
-        decode: decode
-    }
-}
-
-export const textDecoder = (data) => {
-    const slice = data
-
-    const decode = () => {
-        const texts = []
-        const lexer = new Lexer(slice)
-        let x, y, font, fontSize, text
+        const lexer = new Lexer(data)
+        let glyph = GlyphState.initialize(fonts, reader)
+        const glyphStack = []
         interpreter(lexer, (stack, op) => {
             let args = []
             for (let i = stack.length - 1; i >= 0; i--) {
-                args.push(stack.pop())
+                // FIFO behaviour
+                args.push(stack.shift())
             }
-            switch (op) {
-                case STATE_OPS.TD:
-                    if (args.length !== 2) {
-                        //console.error(`bad parameters for operand: ${op}`)
-                        break
-                    }
-                    x = args[0]
-                    y = args[1]
-                    break
-                case STATE_OPS.Tf:
-                    if (args.length !== 2) {
-                        //console.error(`bad parameters for operand: ${op}`)
-                        break
-                    }
-                    font = args[0]
-                    fontSize = args[1]
-                    break
-                case STATE_OPS.Tj:
-                    if (args.length !== 1) {
-                        //console.error(`bad parameters for operand: ${op}`)
-                        break
-                    }
-                    text = args[0]
-                    texts.push({font, fontSize, x, y, text: cleanText(text)})
-                    break
-                case STATE_OPS.TJ:
-                    if (args.length !== 1) {
-                        //console.error(`bad parameters for operand ${op}`)
-                        break
-                    }
-                    const values = args[0]
-                    for (let i = 0; i < values.length; i++) {
-                        const value = values[i]
-                        if (typeof value === "string") {
-                            texts.push({font, fontSize, x, y, text: cleanText(value)})
-                        }
-                    }
-                    break
-                default:
+            // Update CTM
+            if (op === OP.cm.value) {
+                if (args.length !== OP.cm.args) {
+                    console.error(`bad parameters for operand: ${op}`)
                     return
+                }
+                const [ a, b, c, d, e, f ] = args
+                const matrix = new Matrix3x3([
+                    a, b, 0,
+                    c, d, 0,
+                    e, f, 1,
+                ])
+                glyph.ctm = matrix.Mul(glyph.ctm)
+                return
+            }
+
+            // Save current graphic state into the stack
+            if (op === OP.q.value) {
+                glyphStack.push(glyph)
+                return
+            }
+
+            // Restore graphics state from the stack
+            if (op === OP.Q.value) {
+                glyph = glyphStack.pop()
+                return
+            }
+
+            // Begin text
+            if (op === OP.BT.value) {
+                glyph = GlyphState.initialize(fonts, reader)
+                return
+            }
+
+            // End text
+            if (op === OP.ET.value) {
+                return
+            }
+
+            // Set character space
+            if (op === OP.Tc.value) {
+                if (args.length !== OP.Tc.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ charSpace ] = args
+                glyph.Tc(charSpace)
+                return
+            }
+
+            // Set word space
+            if (op === OP.Tw.value) {
+                if (args.length !== OP.Tw.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ wordSpace ] = args
+                glyph.Tw(wordSpace)
+                return
+            }
+
+            // Set horizontal scale
+            if (op === OP.Tz.value) {
+                if (args.length !== OP.Tz.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ scale ] = args
+                glyph.Tz(scale)
+                return
+            }
+
+            // Set Leading
+            if (op === OP.TL.value) {
+                if (args.length !== OP.TL.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ leading ] = args
+                glyph.TL(leading)
+                return
+            }
+
+            // Set text font and size
+            if (op === OP.Tf.value) {
+                if (args.length !== OP.Tf.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ textFont, textSize ] = args
+                glyph.Tf(textFont, textSize)
+                return
+            }
+
+            // Set rendering mode
+            if (op === OP.Tr.value) {
+                if (args.length !== OP.Tr.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ mode ] = args
+                glyph.Tr(mode)
+                return
+            }
+
+            // Set text rise
+            if (op === OP.Ts.value) {
+                if (args.length !== OP.Ts.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ rise ] = args
+                glyph.Ts(rise)
+                return
+            }
+
+            // Move to the start of the next line
+            if (op === OP.Td.value) {
+                if (args.length !== OP.Td.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ tx, ty ] = args
+                glyph.Td(tx, ty)
+                return
+            }
+
+            // Move to the start of the next line
+            if (op === OP.TD.value) {
+                if (args.length !== OP.TD.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ tx, ty ] = args
+                glyph.TD(tx, ty)
+                return
+            }
+
+            // Set the text matrix (tm) and the text line matrix (tlm)
+            if (op === OP.Tm.value) {
+                if (args.length !== OP.Tm.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ a, b, c, d, e, f ] = args
+                glyph.Tm(a, b, c, d, e, f)
+                return
+            }
+
+            // Move to the start of the next line
+            if (op === OP.TAsterisk.value) {
+                if (args.length !== OP.TAsterisk.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                glyph.TAsterisk()
+                return
+            }
+
+            // Show text
+            if (op === OP.Tj.value) {
+                if (args.length !== OP.Tj.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ text ] = args
+                texts.push(...glyph.showTextString(text))
+                return
+            }
+
+            // Move to the next line and show a text string
+            if (op === OP.TSQuote.value) {
+                if (args.length !== OP.TSQuote.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ text ] = args
+                glyph.TAsterisk()
+                texts.push(...glyph.showTextString(text))
+                return
+            }
+
+            // Move to the next line and show a text string
+            if (op === OP.TDQuote.value) {
+                if (args.length !== OP.TDQuote.args) {
+                    console.error(`bad parameters for operand: ${op}`)
+                    return
+                }
+                const [ wordSpace, charSpace, text ] = args
+                glyph.Tw(wordSpace)
+                glyph.Tc(charSpace)
+                glyph.TAsterisk()
+                texts.push(...glyph.showTextString(text))
+                return
+            }
+
+            // Show one or more text strings, allowing individual glyph positioning
+            if (op === OP.TJ.value) {
+                if (args.length !== OP.TJ.args) {
+                    console.error(`bad parameters for operand ${op}`)
+                    return
+                }
+                const [ array ] = args
+                for (let i = 0; i < array.length; i++) {
+                    const value = array[i]
+                    if (typeof value === "string") {
+                        texts.push(...glyph.showTextString(value))
+                    }
+                    if (typeof value === "number") {
+                        const tx = -1 * value / 1000 * glyph.tfs * glyph.th
+                        const matrix = new Matrix3x3([
+                            1,  0, 0,
+                            0,  1, 0,
+                            tx, 0, 1
+                        ])
+                        glyph.tm = matrix.Mul(glyph.tm)
+                    }
+                }
             }
         })
-        return texts
+
+        return normalize(texts)
     }
 
     const interpreter = (lexer, callback) => {
         let stack = []
-        // TODO: Improve the interpreter by implementing all valid operands
-        //  PDF 32000-1:2008 --> Section 9: Text
-        const validOperands = [STATE_OPS.TD, STATE_OPS.Tf, STATE_OPS.Tj, STATE_OPS.TJ]
+        const validOperands = Object.keys(OP).map(key => OP[key].value)
         while (true) {
             const token = lexer.readToken()
             if (token.type === T.EOF) {
                 break
             }
-            if (lexer.pos >= slice.length) {
+            if (lexer.pos >= data.length) {
                 break
             }
             if (token.type === T.Keyword) {
-                if (token.value === TEXT_OPS.BT) {
+                if (token.value === OP.BT.value) {
                     // Begin Text
                     stack = []
-                    continue
+                    callback(stack, token.value)
                 }
-                if (token.value === TEXT_OPS.ET) {
+                if (token.value === OP.ET.value) {
                     // End Text
                     stack = []
-                    continue
+                    callback(stack, token.value)
                 }
                 if (token.value === "[") {
                     stack.push(lexer.readArray())
@@ -242,6 +401,55 @@ export const textDecoder = (data) => {
                 stack.push(token.value)
             }
         }
+    }
+
+    const normalize = (texts) => {
+        const words = []
+        // Sort by y coordinate to sort the text by lines without breaking the x order
+        const sorted = texts.sort((a, b) => {
+            if (a.y < b.y) {
+                return 1
+            }
+            if (a.y > b.y) {
+                return -1
+            }
+            return 0
+        })
+        const yThreshold = 0.1
+        const xThreshold = 0.1
+        let word = ''
+        for (let i = 0; i < sorted.length; i++) {
+            const prev = sorted[i - 1]
+            const curr = sorted[i]
+            if (prev === undefined) {
+                word += curr.text
+                continue
+            }
+            const charSpace = curr.fontSize / 6
+            const wordSpace = curr.fontSize * 2 / 3
+            const deltaY = Math.abs(curr.y - prev.y)
+            const deltaFont = Math.abs(curr.fontSize - prev.fontSize)
+            const haveSameFonts = prev.fontName === curr.fontName
+
+            if (deltaY > yThreshold) {
+                // Line changes; push the word and reset the word buffer
+                words.push(word)
+                word = curr.text
+                continue
+            }
+            if (haveSameFonts && (deltaFont < xThreshold) && (curr.x <= (prev.x + prev.w) + charSpace )) {
+                // Same word; continue to concatenate
+                word += curr.text
+                if (i + 1 === sorted.length) {
+                    words.push(word)
+                }
+            } else if (haveSameFonts && (deltaFont < xThreshold) && (curr.x <= (prev.x + prev.w) + wordSpace )) {
+                // Word changes: push the current text into the array
+                words.push(word)
+                word = curr.text
+            }
+        }
+        return words
     }
 
     return {

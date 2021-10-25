@@ -296,7 +296,15 @@ export class PDFReader {
             throw new Error(`Page ${index + 1} does not exists in the catalog. Page size of PDF is: ${this.pageSize()}`)
         }
         const page = this.pages[index]
-        return page.Key("Contents", this.reader)
+        const resources = page.Key("Resources", this.reader)
+        const Font = resources.Key("Font")
+        const fontNames = Object.keys(Font)
+        const fonts = {}
+        for (let i = 0; i < fontNames.length; i++) {
+            const key = fontNames[i]
+            fonts[key] = Font.Key(key, this.reader)
+        }
+        return page.Key("Contents", this.reader, fonts)
     }
 
     inspect () {

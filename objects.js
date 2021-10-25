@@ -31,7 +31,7 @@ export class Reference {
         this.gen = gen
     }
 
-    resolve (reader) {
+    resolve (reader, fonts) {
         const data = reader.data
         const xrefs = reader.xrefs
         const xref = this.findXRef(xrefs, this)
@@ -54,8 +54,7 @@ export class Reference {
                     }
                     throw new Error(`Unknown subtype ${subType}`)
                 }
-                return textDecoder(decoded).decode().map(w => w.text)
-                // return simpleTextDecoder(decoded).decode()
+                return textDecoder(decoded, reader, fonts).decode()
             } else {
                 return definition
             }
@@ -117,7 +116,7 @@ export class Definition extends Base {
         this.obj = obj
     }
 
-    Key(key, reader) {
+    Key(key, reader, fonts) {
         super.Key(key, reader)
         if (this.obj instanceof Dict) {
             if (this.obj[key] === undefined) {
@@ -125,7 +124,7 @@ export class Definition extends Base {
                 return undefined
             }
             if (this.obj[key] instanceof Reference) {
-                return this.obj[key].resolve(reader)
+                return this.obj[key].resolve(reader, fonts)
             } else {
                 return this.obj[key]
             }
@@ -136,7 +135,7 @@ export class Definition extends Base {
                 return undefined
             }
             if (this.obj.dict[key] instanceof Reference) {
-                return this.obj.dict[key].resolve(reader)
+                return this.obj.dict[key].resolve(reader, fonts)
             } else {
                 return this.obj.dict[key]
             }
@@ -245,13 +244,13 @@ export class Dict extends Base {
         super()
     }
 
-    Key(key, reader) {
+    Key(key, reader, fonts) {
         super.Key(key, reader)
         if (this[key] === undefined) {
             console.error(`Key: ${key} is not defined in the Dictionary instance`)
         }
         if (this[key] instanceof Reference) {
-            return this[key].resolve(reader)
+            return this[key].resolve(reader, fonts)
         } else {
             return this[key]
         }

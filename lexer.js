@@ -10,7 +10,8 @@ import {
     parseNumber,
     parseReal,
     hexDecode,
-    trimObject
+    trimObject,
+    isNumber
 } from "./utils.js"
 
 export class Lexer {
@@ -284,10 +285,10 @@ export class Lexer {
             buffer.push(String.fromCharCode(byte))
         }
         const key = buffer.join("")
-        if (isInteger(key)) {
-            return {type: T.Integer, value: parseNumber(key)}
-        }
-        if (isReal(key)) {
+        if (isNumber(key)) {
+            if (isInteger(key)) {
+                return {type: T.Integer, value: parseNumber(key)}
+            }
             return {type: T.Real, value: parseReal(key)}
         }
         switch (key) {
